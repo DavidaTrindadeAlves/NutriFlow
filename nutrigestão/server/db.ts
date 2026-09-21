@@ -23,23 +23,56 @@ export interface DatabaseSchema {
   messages: Message[];
 }
 
-const DATA_DIR = path.join(process.cwd(), 'data');
-const DB_FILE = path.join(DATA_DIR, 'nutrigestao_db.json');
+import os from 'os';
+
+function getStoragePaths(): { dataDir: string; dbFile: string } {
+  // If running on Vercel or read-only filesystem, use /tmp
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    const tmpDir = path.join(os.tmpdir(), 'nutrigestao_data');
+    return { dataDir: tmpDir, dbFile: path.join(tmpDir, 'nutrigestao_db.json') };
+  }
+
+  const defaultDir = path.join(process.cwd(), 'data');
+  try {
+    if (!fs.existsSync(defaultDir)) {
+      fs.mkdirSync(defaultDir, { recursive: true });
+    }
+    // Test write permission
+    const testFile = path.join(defaultDir, '.write-test');
+    fs.writeFileSync(testFile, 'ok');
+    fs.unlinkSync(testFile);
+    return { dataDir: defaultDir, dbFile: path.join(defaultDir, 'nutrigestao_db.json') };
+  } catch {
+    // Fall back to os.tmpdir() if current working dir is read-only
+    const tmpDir = path.join(os.tmpdir(), 'nutrigestao_data');
+    return { dataDir: tmpDir, dbFile: path.join(tmpDir, 'nutrigestao_db.json') };
+  }
+}
+
+const { dataDir: DATA_DIR, dbFile: DB_FILE } = getStoragePaths();
 
 let dbMemory: DatabaseSchema | null = null;
 
 function ensureDataDir(): void {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+  } catch (err) {
+    console.warn('Could not create data directory, running in memory:', err);
   }
 }
 
 function saveDb(): void {
-  ensureDataDir();
   if (!dbMemory) return;
-  const tempPath = `${DB_FILE}.tmp`;
-  fs.writeFileSync(tempPath, JSON.stringify(dbMemory, null, 2), 'utf-8');
-  fs.renameSync(tempPath, DB_FILE);
+  try {
+    ensureDataDir();
+    const tempPath = `${DB_FILE}.tmp`;
+    fs.writeFileSync(tempPath, JSON.stringify(dbMemory, null, 2), 'utf-8');
+    fs.renameSync(tempPath, DB_FILE);
+  } catch (err) {
+    console.warn('Persistence write warning (continuing with in-memory state):', err);
+  }
 }
 
 function seedDefaultData(): DatabaseSchema {

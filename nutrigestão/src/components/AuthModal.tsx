@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext.tsx';
+import { api } from '../services/api.ts';
 import { Activity, AlertCircle, CheckCircle2, Lock, Mail, Phone, ShieldCheck, User, X } from 'lucide-react';
 
 interface AuthModalProps {
@@ -37,13 +38,31 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMo
     setLoading(true);
 
     try {
+      const cleanEmail = email.trim();
+      if (!cleanEmail) {
+        setError('Por favor, informe seu e-mail.');
+        setLoading(false);
+        return;
+      }
+
+      if (!password) {
+        setError('Por favor, digite sua senha.');
+        setLoading(false);
+        return;
+      }
+
       if (mode === 'login') {
-        await login(email, password);
+        await login(cleanEmail, password);
         onClose();
       } else if (mode === 'register') {
+        if (!name.trim()) {
+          setError('Por favor, informe seu nome completo.');
+          setLoading(false);
+          return;
+        }
         await register({
-          name,
-          email,
+          name: name.trim(),
+          email: cleanEmail,
           password,
           role,
           crn,
@@ -55,16 +74,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMo
         });
         onClose();
       } else if (mode === 'forgot') {
-        const res = await fetch('/api/auth/forgot-password', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email }),
-        });
-        const data = await res.json();
-        setSuccess(data.message || 'Instruções enviadas com sucesso.');
+        const res = await api.forgotPassword(cleanEmail);
+        setSuccess(res.message || 'Instruções enviadas com sucesso.');
       }
     } catch (err: any) {
-      setError(err.message || 'Erro ao processar solicitação.');
+      setError(err.message || 'Erro ao processar solicitação. Verifique os dados e tente novamente.');
     } finally {
       setLoading(false);
     }

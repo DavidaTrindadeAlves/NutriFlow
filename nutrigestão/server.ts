@@ -53,7 +53,8 @@ async function startServer() {
         return;
       }
 
-      const existingUser = db.getUserByEmail(email);
+      const cleanEmail = email ? email.trim().toLowerCase() : '';
+      const existingUser = db.getUserByEmail(cleanEmail);
       if (existingUser) {
         res.status(409).json({ error: 'Este e-mail já está cadastrado no sistema.' });
         return;
@@ -66,7 +67,7 @@ async function startServer() {
       const newUser: User & { passwordHash: string } = {
         id: userId,
         name: name.trim(),
-        email: email.trim().toLowerCase(),
+        email: cleanEmail,
         role,
         avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}`,
         createdAt: now,
@@ -169,7 +170,8 @@ async function startServer() {
         return;
       }
 
-      const user = db.getUserByEmail(email);
+      const cleanEmail = email.trim().toLowerCase();
+      const user = db.getUserByEmail(cleanEmail);
       if (!user) {
         res.status(401).json({ error: 'E-mail ou senha incorretos.' });
         return;
