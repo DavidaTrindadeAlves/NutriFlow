@@ -10,6 +10,8 @@ export interface User {
   email: string;
   role: UserRole;
   avatar?: string;
+  mustChangePassword?: boolean;
+  temporaryPassword?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -53,7 +55,19 @@ export interface PatientProfile {
   currentBodyFat?: number;
   currentBmi?: number;
   lastAssessmentDate?: string;
+  invitationStatus?: 'PENDENTE' | 'ATIVO';
+  invitationSentAt?: string;
+  temporaryPassword?: string;
   user: User;
+}
+
+export interface PatientInvitation {
+  patientId: string;
+  patientName: string;
+  email: string;
+  temporaryPassword: string;
+  sentAt: string;
+  status: 'PENDENTE' | 'ATIVO';
 }
 
 export type AssessmentProtocol =

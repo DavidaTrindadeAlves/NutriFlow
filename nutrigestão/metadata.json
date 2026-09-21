@@ -1,6 +1,6 @@
 {
-  "name": "NutriGestão",
-  "description": "Sistema de gestão nutricional inteligente para nutricionistas e pacientes, com controle de dietas, avaliações de dobras cutâneas, gráficos de evolução e chat integrado.",
+  "name": "NutriFlow",
+  "description": "Sistema completo de gestão nutricional inteligente para nutricionistas e pacientes, com controle de dietas, avaliações físicas, gráficos de evolução e chat integrado.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

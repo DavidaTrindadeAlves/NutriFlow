@@ -1,20 +1,25 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../../services/api.ts';
-import { PatientProfile } from '../../types.ts';
+import { PatientInvitation, PatientProfile } from '../../types.ts';
 import {
   Activity,
   ArrowRight,
+  CheckCircle2,
+  Clock,
   Filter,
+  KeyRound,
   Mail,
   Phone,
   Plus,
   Scale,
   Search,
+  Sparkles,
   User,
   UserPlus,
   Users,
   X,
 } from 'lucide-react';
+import { PatientInvitationModal } from './PatientInvitationModal.tsx';
 
 interface PatientsListProps {
   onSelectPatient: (patientId: string) => void;
@@ -32,6 +37,10 @@ export const PatientsList: React.FC<PatientsListProps> = ({
   const [search, setSearch] = useState('');
   const [genderFilter, setGenderFilter] = useState<'ALL' | 'M' | 'F'>('ALL');
   const [showModal, setShowModal] = useState(openNewPatientModal);
+
+  // Invitation modal state
+  const [invitationModalOpen, setInvitationModalOpen] = useState(false);
+  const [currentInvitation, setCurrentInvitation] = useState<PatientInvitation | null>(null);
 
   // New patient form
   const [newName, setNewName] = useState('');
@@ -82,25 +91,52 @@ export const PatientsList: React.FC<PatientsListProps> = ({
         notes: newNotes,
       });
 
-      // Reload
+      // Reload patients list
       await loadPatients();
       setShowModal(false);
       if (onCloseNewPatientModal) onCloseNewPatientModal();
+
+      // Show invitation modal with credentials to share with patient
+      const invitationData: PatientInvitation = res.invitation || {
+        patientId: res.patient.id,
+        patientName: res.patient.user?.name || newName,
+        email: res.patient.user?.email || newEmail,
+        temporaryPassword: res.temporaryPassword || 'NF-PROV123',
+        status: 'PENDENTE',
+        sentAt: new Date().toISOString(),
+      };
+      setCurrentInvitation(invitationData);
+      setInvitationModalOpen(true);
 
       // Reset form
       setNewName('');
       setNewEmail('');
       setNewPhone('');
       setNewNotes('');
-
-      // Open new patient right away
-      if (res.patient?.id) {
-        onSelectPatient(res.patient.id);
-      }
     } catch (err: any) {
       setFormError(err.message || 'Erro ao cadastrar paciente');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleViewInvitation = async (e: React.MouseEvent, patient: PatientProfile) => {
+    e.stopPropagation();
+    try {
+      const inv = await api.getPatientInvitation(patient.id);
+      setCurrentInvitation(inv);
+      setInvitationModalOpen(true);
+    } catch (err) {
+      // Fallback
+      setCurrentInvitation({
+        patientId: patient.id,
+        patientName: patient.user?.name || 'Paciente',
+        email: patient.user?.email || '',
+        temporaryPassword: patient.temporaryPassword || 'NF-PROV123',
+        status: patient.invitationStatus || 'PENDENTE',
+        sentAt: patient.invitationSentAt || new Date().toISOString(),
+      });
+      setInvitationModalOpen(true);
     }
   };
 
@@ -243,9 +279,22 @@ export const PatientsList: React.FC<PatientsListProps> = ({
                         <p className="text-[11px] text-neutral-400">{patient.user?.email}</p>
                       </div>
                     </div>
-                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-950 border border-purple-800/40 text-purple-300 uppercase">
-                      {patient.gender === 'M' ? 'Masc' : 'Fem'}
-                    </span>
+                    <div className="flex flex-col items-end space-y-1">
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-950 border border-purple-800/40 text-purple-300 uppercase">
+                        {patient.gender === 'M' ? 'Masc' : 'Fem'}
+                      </span>
+                      {patient.invitationStatus === 'PENDENTE' ? (
+                        <span className="inline-flex items-center space-x-1 text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                          <Clock className="w-2.5 h-2.5" />
+                          <span>Senha Provisória</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center space-x-1 text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                          <CheckCircle2 className="w-2.5 h-2.5" />
+                          <span>Acesso Ativo</span>
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {/* Anthropometric Metrics row */}
@@ -273,8 +322,16 @@ export const PatientsList: React.FC<PatientsListProps> = ({
 
                 {/* Bottom Footer */}
                 <div className="pt-2 flex items-center justify-between text-xs text-neutral-400">
-                  <span className="text-[11px]">Última: {lastDate}</span>
-                  <span className="text-purple-400 font-semibold group-hover:translate-x-1 transition flex items-center">
+                  <button
+                    type="button"
+                    onClick={(e) => handleViewInvitation(e, patient)}
+                    className="text-[11px] font-semibold text-neutral-300 hover:text-purple-300 flex items-center space-x-1 px-2 py-1 rounded-lg hover:bg-neutral-800 transition"
+                  >
+                    <KeyRound className="w-3 h-3 text-amber-400" />
+                    <span>Dados de Acesso</span>
+                  </button>
+
+                  <span className="text-purple-400 font-semibold group-hover:translate-x-1 transition flex items-center text-[11px]">
                     Ver ficha <ArrowRight className="w-3.5 h-3.5 ml-1" />
                   </span>
                 </div>
@@ -304,7 +361,7 @@ export const PatientsList: React.FC<PatientsListProps> = ({
               </div>
               <div>
                 <h3 className="text-lg font-bold text-white">Cadastrar Novo Paciente</h3>
-                <p className="text-xs text-neutral-400">Insira os dados clínicos iniciais do paciente</p>
+                <p className="text-xs text-neutral-400">Gere o acesso do paciente com senha provisória</p>
               </div>
             </div>
 
@@ -313,6 +370,16 @@ export const PatientsList: React.FC<PatientsListProps> = ({
                 {formError}
               </div>
             )}
+
+            {/* Explanatory Banner for Temporary Password */}
+            <div className="mb-4 p-3.5 rounded-2xl bg-purple-950/40 border border-purple-800/40 text-neutral-300 text-xs flex items-start space-x-2.5">
+              <Sparkles className="w-4 h-4 text-purple-400 shrink-0 mt-0.5" />
+              <div className="text-[11px] leading-relaxed">
+                <strong className="text-purple-200">Acesso seguro automatizado:</strong> Ao salvar, o sistema criará uma
+                senha provisória para o paciente. Você poderá enviá-la via WhatsApp ou E-mail. No primeiro login, o paciente
+                deverá cadastrar sua senha pessoal definitiva.
+              </div>
+            </div>
 
             <form onSubmit={handleCreatePatient} className="space-y-4 text-xs">
               <div>
@@ -338,7 +405,9 @@ export const PatientsList: React.FC<PatientsListProps> = ({
                     placeholder="beatriz@exemplo.com"
                     className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2.5 text-white placeholder-neutral-500 focus:outline-none focus:border-purple-500"
                   />
-                  <span className="text-[10px] text-neutral-500 mt-0.5 block">Senha inicial: password123</span>
+                  <span className="text-[10px] text-purple-400 mt-0.5 block font-medium">
+                    Senha provisória gerada automaticamente
+                  </span>
                 </div>
                 <div>
                   <label className="block font-semibold text-neutral-300 mb-1">Telefone / WhatsApp</label>
@@ -419,6 +488,13 @@ export const PatientsList: React.FC<PatientsListProps> = ({
           </div>
         </div>
       )}
+
+      {/* Patient Invitation / Temporary Password Modal */}
+      <PatientInvitationModal
+        isOpen={invitationModalOpen}
+        onClose={() => setInvitationModalOpen(false)}
+        invitation={currentInvitation}
+      />
     </div>
   );
 };

@@ -35,7 +35,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth, onQuickLog
           </div>
           <div>
             <div className="flex items-center space-x-2">
-              <span className="text-xl font-bold tracking-tight text-white">NutriGestão</span>
+              <span className="text-xl font-bold tracking-tight text-white">NutriFlow</span>
               <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-purple-900/50 text-purple-300 border border-purple-700/50">
                 SaaS
               </span>
@@ -104,7 +104,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth, onQuickLog
           </div>
           <div className="flex items-center space-x-2 w-full sm:w-auto">
             <button
-              onClick={() => onQuickLogin('dr.carlos@nutrigestao.com')}
+              onClick={() => onQuickLogin('dr.carlos@nutriflow.com')}
               className="flex-1 sm:flex-none px-3 py-1.5 rounded-lg bg-purple-950 border border-purple-700/50 text-purple-200 hover:bg-purple-900 transition font-medium"
             >
               Dr. Carlos (Nutri)
@@ -208,7 +208,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth, onQuickLog
         <div className="text-center mb-16">
           <h2 className="text-xs uppercase tracking-widest text-purple-400 font-bold mb-3">Fluxo Simplificado</h2>
           <p className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
-            Como o NutriGestão transforma seu atendimento
+            Como o NutriFlow transforma seu atendimento
           </p>
         </div>
 
@@ -272,7 +272,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth, onQuickLog
               Criar Conta Grátis
             </button>
             <button
-              onClick={() => onQuickLogin('dr.carlos@nutrigestao.com')}
+              onClick={() => onQuickLogin('dr.carlos@nutriflow.com')}
               className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-neutral-800/90 text-neutral-200 font-medium hover:bg-neutral-700 transition"
             >
               Testar com Dr. Carlos
@@ -283,7 +283,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth, onQuickLog
 
       {/* Footer */}
       <footer className="mt-auto border-t border-neutral-900 py-8 px-4 text-center text-xs text-neutral-500">
-        <p>© 2026 NutriGestão — Sistema de Gestão Nutricional. Todos os direitos reservados.</p>
+        <p>© 2026 NutriFlow — Sistema de Gestão Nutricional. Todos os direitos reservados.</p>
       </footer>
     </div>
   );

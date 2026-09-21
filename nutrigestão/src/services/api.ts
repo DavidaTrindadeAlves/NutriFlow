@@ -12,7 +12,8 @@ import {
 import { clientStorage } from './clientStorage.ts';
 import { calculateComposition } from '../utils/calc.ts';
 
-const TOKEN_KEY = 'nutrigestao_auth_token';
+const TOKEN_KEY = 'nutriflow_auth_token';
+const LEGACY_TOKEN_KEY = 'nutrigestao_auth_token';
 
 let serverAvailable: boolean | null = null;
 
@@ -40,7 +41,7 @@ async function checkServerHealth(): Promise<boolean> {
 
 export const api = {
   getToken(): string | null {
-    return localStorage.getItem(TOKEN_KEY);
+    return localStorage.getItem(TOKEN_KEY) || localStorage.getItem(LEGACY_TOKEN_KEY);
   },
 
   setToken(token: string) {
@@ -49,6 +50,7 @@ export const api = {
 
   removeToken() {
     localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(LEGACY_TOKEN_KEY);
   },
 
   async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
@@ -102,12 +104,10 @@ export const api = {
         body: JSON.stringify({ email: cleanEmail, password }),
       });
     } catch (err: any) {
-      // If server is not responding or returned HTML (e.g. Vercel static deployment)
       if (!serverAvailable || err.message === 'API_HTML_FALLBACK' || err.message?.includes('Failed to fetch')) {
-        console.info('[NutriGestão] Usando persistência local para login (modo Vercel / Offline)');
+        console.info('[NutriFlow] Usando persistência local para login (modo Vercel / Offline)');
         return clientStorage.login(cleanEmail, password);
       }
-      // If it was a genuine bad credentials error from a working server, rethrow
       throw err;
     }
   },
@@ -125,7 +125,7 @@ export const api = {
       });
     } catch (err: any) {
       if (!serverAvailable || err.message === 'API_HTML_FALLBACK' || err.message?.includes('Failed to fetch')) {
-        console.info('[NutriGestão] Usando persistência local para cadastro (modo Vercel / Offline)');
+        console.info('[NutriFlow] Usando persistência local para cadastro (modo Vercel / Offline)');
         return clientStorage.register(formData);
       }
       throw err;
@@ -172,6 +172,22 @@ export const api = {
     }
   },
 
+  async changeFirstPassword(newPassword: string): Promise<{ message: string }> {
+    try {
+      return await this.request<{ message: string }>('/api/auth/first-access-password', {
+        method: 'POST',
+        body: JSON.stringify({ newPassword }),
+      });
+    } catch (err: any) {
+      if (!serverAvailable || err.message === 'API_HTML_FALLBACK' || err.message?.includes('Failed to fetch')) {
+        const me = await this.getMe();
+        await clientStorage.changeFirstPassword(me.user.id, newPassword);
+        return { message: 'Senha inicial definida com sucesso!' };
+      }
+      throw err;
+    }
+  },
+
   // ==========================================
   // CALCULATION PREVIEW
   // ==========================================
@@ -197,7 +213,15 @@ export const api = {
       return await this.request<PatientProfile[]>('/api/patients');
     } catch (err: any) {
       if (!serverAvailable || err.message === 'API_HTML_FALLBACK' || err.message?.includes('Failed to fetch')) {
-        return clientStorage.getPatients('nutri-carlos');
+        try {
+          const session = await this.getMe();
+          if (session.nutritionist?.id) {
+            return clientStorage.getPatients(session.nutritionist.id);
+          }
+          return [];
+        } catch {
+          return [];
+        }
       }
       throw err;
     }
@@ -214,16 +238,49 @@ export const api = {
     }
   },
 
-  async createPatient(data: any): Promise<{ message: string; patient: PatientProfile }> {
+  async createPatient(
+    data: any
+  ): Promise<{ message: string; patient: PatientProfile; temporaryPassword?: string; invitation?: any }> {
     try {
-      return await this.request<{ message: string; patient: PatientProfile }>('/api/patients', {
+      return await this.request<{
+        message: string;
+        patient: PatientProfile;
+        temporaryPassword?: string;
+        invitation?: any;
+      }>('/api/patients', {
         method: 'POST',
         body: JSON.stringify(data),
       });
     } catch (err: any) {
       if (!serverAvailable || err.message === 'API_HTML_FALLBACK' || err.message?.includes('Failed to fetch')) {
-        const patient = await clientStorage.createPatient('nutri-carlos', data);
-        return { message: 'Paciente cadastrado com sucesso!', patient };
+        const session = await this.getMe();
+        const nutriId = session.nutritionist?.id;
+        if (!nutriId) throw new Error('Nutricionista não identificado na sessão atual.');
+        const result = await clientStorage.createPatient(nutriId, data);
+        return {
+          message: 'Paciente cadastrado com sucesso! Convite com senha provisória gerado.',
+          patient: result.patient,
+          temporaryPassword: result.temporaryPassword,
+          invitation: {
+            patientId: result.patient.id,
+            patientName: result.patient.user.name,
+            email: result.patient.user.email,
+            temporaryPassword: result.temporaryPassword,
+            sentAt: new Date().toISOString(),
+            status: 'PENDENTE',
+          },
+        };
+      }
+      throw err;
+    }
+  },
+
+  async getPatientInvitation(patientId: string): Promise<any> {
+    try {
+      return await this.request<any>(`/api/patients/${patientId}/invitation`);
+    } catch (err: any) {
+      if (!serverAvailable || err.message === 'API_HTML_FALLBACK' || err.message?.includes('Failed to fetch')) {
+        return clientStorage.getPatientInvitation(patientId);
       }
       throw err;
     }
@@ -281,7 +338,9 @@ export const api = {
       });
     } catch (err: any) {
       if (!serverAvailable || err.message === 'API_HTML_FALLBACK' || err.message?.includes('Failed to fetch')) {
-        const assessment = await clientStorage.createAssessment(patientId, 'nutri-carlos', data);
+        const session = await this.getMe();
+        const nutriId = session.nutritionist?.id || 'nutri-carlos';
+        const assessment = await clientStorage.createAssessment(patientId, nutriId, data);
         return { message: 'Avaliação física registrada com sucesso!', assessment };
       }
       throw err;
@@ -321,7 +380,9 @@ export const api = {
       });
     } catch (err: any) {
       if (!serverAvailable || err.message === 'API_HTML_FALLBACK' || err.message?.includes('Failed to fetch')) {
-        const diet = await clientStorage.createDiet(patientId, 'nutri-carlos', data);
+        const session = await this.getMe();
+        const nutriId = session.nutritionist?.id || 'nutri-carlos';
+        const diet = await clientStorage.createDiet(patientId, nutriId, data);
         return { message: 'Plano nutricional criado com sucesso!', diet };
       }
       throw err;
@@ -414,7 +475,10 @@ export const api = {
       });
     } catch (err: any) {
       if (!serverAvailable || err.message === 'API_HTML_FALLBACK' || err.message?.includes('Failed to fetch')) {
-        return clientStorage.sendMessage(patientId, 'NUTRICIONISTA', 'u-nutri-carlos', content);
+        const session = await this.getMe();
+        const role = session.user.role;
+        const senderId = session.user.id;
+        return clientStorage.sendMessage(patientId, role, senderId, content);
       }
       throw err;
     }
@@ -429,7 +493,17 @@ export const api = {
       return await this.request<any>('/api/dashboard/stats');
     } catch (err: any) {
       if (!serverAvailable || err.message === 'API_HTML_FALLBACK' || err.message?.includes('Failed to fetch')) {
-        return clientStorage.getDashboardStats('nutri-carlos');
+        try {
+          const session = await this.getMe();
+          if (session.user.role === 'NUTRICIONISTA' && session.nutritionist?.id) {
+            return clientStorage.getDashboardStats(session.nutritionist.id);
+          } else if (session.patient?.id) {
+            return clientStorage.getPatientDashboardStats(session.patient.id);
+          }
+          return { totalPatients: 0, activeDiets: 0, totalAssessments: 0, retentionRate: 0 };
+        } catch {
+          return { totalPatients: 0, activeDiets: 0, totalAssessments: 0, retentionRate: 0 };
+        }
       }
       throw err;
     }
@@ -443,12 +517,16 @@ export const api = {
     try {
       return await this.request<License>('/api/license');
     } catch (err: any) {
+      try {
+        const session = await this.getMe();
+        if (session.license) return session.license;
+      } catch {}
       return {
         id: 'lic-default',
-        nutritionistId: 'nutri-carlos',
+        nutritionistId: 'nutri-current',
         type: 'CRN Regular',
         status: 'ATIVA',
-        licenseNumber: 'CRN-3 48190/SP',
+        licenseNumber: 'CRN Regular',
         startDate: '2025-01-01',
         expirationDate: '2026-12-31',
         createdAt: '2025-01-01',
@@ -463,7 +541,9 @@ export const api = {
         body: JSON.stringify({ status, type }),
       });
     } catch (err: any) {
-      const res = await clientStorage.toggleLicense('nutri-carlos', (status as any) || 'ATIVA');
+      const session = await this.getMe();
+      const nutriId = session.nutritionist?.id || 'nutri-carlos';
+      const res = await clientStorage.toggleLicense(nutriId, (status as any) || 'ATIVA');
       return { message: 'Status da licença atualizado com sucesso!', license: res.license! };
     }
   },
@@ -479,7 +559,8 @@ export const api = {
         body: JSON.stringify(data),
       });
     } catch (err: any) {
-      await clientStorage.updateProfile('u-nutri-carlos', data);
+      const session = await this.getMe();
+      await clientStorage.updateProfile(session.user.id, data);
       return { message: 'Perfil atualizado com sucesso!' };
     }
   },
@@ -491,7 +572,8 @@ export const api = {
         body: JSON.stringify(data),
       });
     } catch (err: any) {
-      await clientStorage.updatePassword('u-nutri-carlos', data.currentPassword, data.newPassword);
+      const session = await this.getMe();
+      await clientStorage.updatePassword(session.user.id, data.currentPassword, data.newPassword);
       return { message: 'Senha alterada com sucesso!' };
     }
   },

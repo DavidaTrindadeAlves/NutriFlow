@@ -202,6 +202,8 @@ async function startServer() {
             email: user.email,
             role: user.role,
             avatar: user.avatar,
+            mustChangePassword: (user as any).mustChangePassword || false,
+            temporaryPassword: (user as any).temporaryPassword || undefined,
             createdAt: user.createdAt,
             updatedAt: user.updatedAt,
           },
@@ -334,6 +336,8 @@ async function startServer() {
         email: user.email,
         role: user.role,
         avatar: user.avatar,
+        mustChangePassword: (user as any).mustChangePassword || false,
+        temporaryPassword: (user as any).temporaryPassword || undefined,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
       },
@@ -433,8 +437,9 @@ async function startServer() {
         const now = new Date().toISOString();
         const userId = `u-pat-${Date.now()}`;
         const patId = `pat-${Date.now()}`;
+        const tempPassword = `NF-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
 
-        const newUser: User & { passwordHash: string } = {
+        const newUser: User & { passwordHash: string; mustChangePassword?: boolean; temporaryPassword?: string } = {
           id: userId,
           name: name.trim(),
           email: email.trim().toLowerCase(),
@@ -442,9 +447,11 @@ async function startServer() {
           avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}`,
           createdAt: now,
           updatedAt: now,
-          passwordHash: hashPassword('password123'),
+          passwordHash: hashPassword(tempPassword),
+          mustChangePassword: true,
+          temporaryPassword: tempPassword,
         };
-        db.createUser(newUser);
+        db.createUser(newUser as any);
 
         const newPatient: PatientProfile = {
           id: patId,
@@ -455,12 +462,17 @@ async function startServer() {
           height: Number(height) || 170,
           phone: phone || '',
           notes: notes || '',
+          invitationStatus: 'PENDENTE',
+          invitationSentAt: now,
+          temporaryPassword: tempPassword,
           user: {
             id: newUser.id,
             name: newUser.name,
             email: newUser.email,
             role: newUser.role,
             avatar: newUser.avatar,
+            mustChangePassword: true,
+            temporaryPassword: tempPassword,
             createdAt: newUser.createdAt,
             updatedAt: newUser.updatedAt,
           },
@@ -469,8 +481,17 @@ async function startServer() {
         db.createPatient(newPatient);
 
         res.status(201).json({
-          message: 'Paciente cadastrado com sucesso! A senha inicial de acesso é password123.',
+          message: 'Paciente cadastrado com sucesso! Convite com senha provisória gerado.',
           patient: newPatient,
+          temporaryPassword: tempPassword,
+          invitation: {
+            patientId: patId,
+            patientName: newPatient.user.name,
+            email: newPatient.user.email,
+            temporaryPassword: tempPassword,
+            sentAt: now,
+            status: 'PENDENTE',
+          },
         });
       } catch (err: any) {
         res.status(500).json({ error: 'Erro ao cadastrar paciente: ' + err.message });
@@ -1182,10 +1203,76 @@ async function startServer() {
 
       const newHash = hashPassword(newPassword);
       db.updateUserPassword(user.id, newHash);
+      db.updateUser(user.id, { mustChangePassword: false, temporaryPassword: null } as any);
+
+      if (user.role === 'PACIENTE') {
+        const patient = db.getPatientByUserId(user.id);
+        if (patient) {
+          db.updatePatient(patient.id, { invitationStatus: 'ATIVO', temporaryPassword: null } as any);
+        }
+      }
 
       res.json({ message: 'Senha alterada com sucesso!' });
     } catch (err: any) {
       res.status(500).json({ error: 'Erro ao trocar senha.' });
+    }
+  });
+
+  // First access password definition (forced password reset for invited patients)
+  app.post('/api/auth/first-access-password', authMiddleware, (req: AuthenticatedRequest, res) => {
+    try {
+      const { newPassword } = req.body;
+      if (!newPassword || newPassword.length < 6) {
+        res.status(400).json({ error: 'A nova senha deve ter no mínimo 6 caracteres.' });
+        return;
+      }
+
+      const user = db.getUserById(req.user!.id);
+      if (!user) {
+        res.status(404).json({ error: 'Usuário não encontrado.' });
+        return;
+      }
+
+      const newHash = hashPassword(newPassword);
+      db.updateUserPassword(user.id, newHash);
+      db.updateUser(user.id, { mustChangePassword: false, temporaryPassword: null } as any);
+
+      if (user.role === 'PACIENTE') {
+        const patient = db.getPatientByUserId(user.id);
+        if (patient) {
+          db.updatePatient(patient.id, { invitationStatus: 'ATIVO', temporaryPassword: null } as any);
+        }
+      }
+
+      res.json({ message: 'Senha definitiva configurada com sucesso! Bem-vindo(a) ao NutriFlow!' });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Erro ao salvar senha: ' + err.message });
+    }
+  });
+
+  // Get or resend patient invitation credentials (for nutritionist)
+  app.get('/api/patients/:id/invitation', authMiddleware, requireRole('NUTRICIONISTA'), (req: AuthenticatedRequest, res) => {
+    try {
+      const patientId = req.params.id;
+      const patient = db.getPatientById(patientId);
+      if (!patient || patient.nutritionistId !== req.nutritionist!.id) {
+        res.status(404).json({ error: 'Paciente não encontrado.' });
+        return;
+      }
+
+      const user = db.getUserById(patient.userId);
+      const tempPass = patient.temporaryPassword || (user as any)?.temporaryPassword || 'NF-PROV123';
+
+      res.json({
+        patientId: patient.id,
+        patientName: user?.name || patient.user?.name,
+        email: user?.email || patient.user?.email,
+        temporaryPassword: tempPass,
+        status: patient.invitationStatus || ((user as any)?.mustChangePassword ? 'PENDENTE' : 'ATIVO'),
+        sentAt: patient.invitationSentAt || patient.user?.createdAt,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Erro ao buscar dados do convite: ' + err.message });
     }
   });
 
@@ -1208,7 +1295,7 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`NutriGestão Server running on http://0.0.0.0:${PORT}`);
+    console.log(`NutriFlow Server running on http://0.0.0.0:${PORT}`);
   });
 }
 

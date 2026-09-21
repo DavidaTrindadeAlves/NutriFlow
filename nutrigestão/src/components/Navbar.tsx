@@ -44,7 +44,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
           <div>
             <div className="flex items-center space-x-2">
-              <span className="text-lg font-bold tracking-tight text-white">NutriGestão</span>
+              <span className="text-lg font-bold tracking-tight text-white">NutriFlow</span>
               <span className="text-[10px] uppercase font-semibold px-2 py-0.5 rounded-full bg-purple-950/80 border border-purple-800/40 text-purple-300">
                 PRO
               </span>
@@ -57,7 +57,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         <div className="hidden md:flex items-center space-x-2 bg-neutral-900/90 border border-neutral-800/80 rounded-full px-3 py-1 text-xs">
           <span className="text-neutral-400">Demo Rápida:</span>
           <button
-            onClick={() => quickSwitchUser('dr.carlos@nutrigestao.com')}
+            onClick={() => quickSwitchUser('dr.carlos@nutriflow.com')}
             className={`px-2.5 py-0.5 rounded-full text-xs font-medium transition ${
               isNutri
                 ? 'bg-purple-600 text-white shadow-sm'

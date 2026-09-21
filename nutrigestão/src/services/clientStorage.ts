@@ -7,15 +7,16 @@ import {
   License,
   Message,
   NutritionistProfile,
+  PatientInvitation,
   PatientProfile,
   User,
 } from '../types.ts';
 import { calculateComposition } from '../utils/calc.ts';
 
-const LOCAL_STORAGE_DB_KEY = 'nutrigestao_local_storage_db';
+const LOCAL_STORAGE_DB_KEY = 'nutriflow_local_storage_db';
 
 export interface LocalDatabaseSchema {
-  users: (User & { passwordHash: string })[];
+  users: (User & { passwordHash: string; mustChangePassword?: boolean; temporaryPassword?: string })[];
   nutritionists: NutritionistProfile[];
   patients: PatientProfile[];
   licenses: License[];
@@ -33,18 +34,19 @@ function dateAgo(days: number): string {
 function getInitialDatabase(): LocalDatabaseSchema {
   const now = new Date().toISOString();
 
-  const userNutri: User & { passwordHash: string } = {
+  const userNutri: User & { passwordHash: string; mustChangePassword?: boolean; temporaryPassword?: string } = {
     id: 'u-nutri-carlos',
     name: 'Dr. Carlos Nutrição',
-    email: 'dr.carlos@nutrigestao.com',
+    email: 'dr.carlos@nutriflow.com',
     role: 'NUTRICIONISTA',
     avatar: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=200&auto=format&fit=crop&q=80',
     createdAt: dateAgo(180),
     updatedAt: now,
     passwordHash: 'password123',
+    mustChangePassword: false,
   };
 
-  const userMariana: User & { passwordHash: string } = {
+  const userMariana: User & { passwordHash: string; mustChangePassword?: boolean; temporaryPassword?: string } = {
     id: 'u-pat-mariana',
     name: 'Mariana Silva',
     email: 'mariana.silva@email.com',
@@ -53,6 +55,7 @@ function getInitialDatabase(): LocalDatabaseSchema {
     createdAt: dateAgo(90),
     updatedAt: now,
     passwordHash: 'password123',
+    mustChangePassword: false,
   };
 
   const userLucas: User & { passwordHash: string } = {
@@ -309,7 +312,7 @@ function getInitialDatabase(): LocalDatabaseSchema {
       senderId: nutritionist.userId,
       receiverId: patientMariana.userId,
       patientId: patientMariana.id,
-      content: 'Olá Mariana! Seja muito bem-vinda ao NutriGestão. Seu plano alimentar já está disponível na aba Dieta.',
+      content: 'Olá Mariana! Seja muito bem-vinda ao NutriFlow. Seu plano alimentar já está disponível na aba Dieta.',
       readAt: dateAgo(28),
       createdAt: dateAgo(29),
       senderName: nutritionist.user.name,
@@ -387,18 +390,27 @@ class ClientStorageService {
   // AUTH METHODS
   async login(email: string, password: string): Promise<{ message: string; session: AuthSession }> {
     const cleanEmail = email.trim().toLowerCase();
-    const user = this.db.users.find((u) => u.email.toLowerCase() === cleanEmail);
+    const user = this.db.users.find(
+      (u) =>
+        u.email.toLowerCase() === cleanEmail ||
+        (cleanEmail === 'dr.carlos@nutriflow.com' && u.email === 'dr.carlos@nutrigestao.com') ||
+        (cleanEmail === 'dr.carlos@nutrigestao.com' && u.email === 'dr.carlos@nutriflow.com')
+    );
 
     if (!user) {
       throw new Error('E-mail ou senha incorretos.');
     }
 
-    // In client-side mode: if user registered with a password, check it, or default seed password 'password123'
-    if (user.passwordHash && user.passwordHash !== password && user.passwordHash !== 'password123' && password !== 'password123') {
+    // In client-side mode: verify password
+    const isTempPass = user.temporaryPassword && user.temporaryPassword === password;
+    const isSeedPass = password === 'password123';
+    const isMatchedPass = user.passwordHash === password;
+
+    if (!isTempPass && !isSeedPass && !isMatchedPass) {
       throw new Error('E-mail ou senha incorretos.');
     }
 
-    const token = `local-token-${user.id}-${Date.now()}`;
+    const token = `local-token-${encodeURIComponent(user.id)}__${Date.now()}`;
     const nutri = user.role === 'NUTRICIONISTA' ? this.db.nutritionists.find((n) => n.userId === user.id) : undefined;
     const patient = user.role === 'PACIENTE' ? this.db.patients.find((p) => p.userId === user.id) : undefined;
     const license = nutri ? this.db.licenses.find((l) => l.nutritionistId === nutri.id) : undefined;
@@ -409,6 +421,8 @@ class ClientStorageService {
       email: user.email,
       role: user.role,
       avatar: user.avatar,
+      mustChangePassword: user.mustChangePassword || false,
+      temporaryPassword: user.temporaryPassword,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };
@@ -441,7 +455,7 @@ class ClientStorageService {
     const now = new Date().toISOString();
     const userId = `u-${Date.now()}`;
 
-    const newUser: User & { passwordHash: string } = {
+    const newUser: User & { passwordHash: string; mustChangePassword?: boolean; temporaryPassword?: string } = {
       id: userId,
       name: name.trim(),
       email: cleanEmail,
@@ -450,6 +464,7 @@ class ClientStorageService {
       createdAt: now,
       updatedAt: now,
       passwordHash: password,
+      mustChangePassword: false,
     };
 
     this.db.users.push(newUser);
@@ -502,6 +517,7 @@ class ClientStorageService {
         gender: gender === 'M' ? 'M' : 'F',
         height: Number(height) || 170,
         phone: phone || '',
+        invitationStatus: 'ATIVO',
         user: newUser,
       };
       this.db.patients.push(patientProfile);
@@ -509,13 +525,14 @@ class ClientStorageService {
 
     this.persist();
 
-    const token = `local-token-${newUser.id}-${Date.now()}`;
+    const token = `local-token-${encodeURIComponent(newUser.id)}__${Date.now()}`;
     const safeUser: User = {
       id: newUser.id,
       name: newUser.name,
       email: newUser.email,
       role: newUser.role,
       avatar: newUser.avatar,
+      mustChangePassword: false,
       createdAt: newUser.createdAt,
       updatedAt: newUser.updatedAt,
     };
@@ -553,22 +570,22 @@ class ClientStorageService {
       throw new Error('Sessão expirada.');
     }
 
-    // Extract user ID from token
-    const parts = token.split('-');
-    let user: (User & { passwordHash: string }) | undefined;
+    let user: (User & { passwordHash: string; mustChangePassword?: boolean; temporaryPassword?: string }) | undefined;
 
     if (token.startsWith('local-token-')) {
-      const userIdPart = token.replace('local-token-', '').split('-')[0];
-      user = this.db.users.find((u) => u.id.startsWith(userIdPart) || u.id === userIdPart);
+      const payload = token.substring('local-token-'.length);
+      const rawUserId = payload.split('__')[0];
+      const userId = decodeURIComponent(rawUserId);
+      user = this.db.users.find((u) => u.id === userId);
+
+      if (!user) {
+        // Backward compatibility search
+        user = this.db.users.find((u) => token.includes(u.id));
+      }
     }
 
     if (!user) {
-      // Fallback: pick first nutri
-      user = this.db.users[0];
-    }
-
-    if (!user) {
-      throw new Error('Usuário não encontrado.');
+      throw new Error('Sessão inválida ou usuário não encontrado.');
     }
 
     const nutri = user.role === 'NUTRICIONISTA' ? this.db.nutritionists.find((n) => n.userId === user.id) : undefined;
@@ -582,6 +599,8 @@ class ClientStorageService {
         email: user.email,
         role: user.role,
         avatar: user.avatar,
+        mustChangePassword: user.mustChangePassword || false,
+        temporaryPassword: user.temporaryPassword,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
       },
@@ -603,46 +622,79 @@ class ClientStorageService {
     const list = this.db.patients.filter((p) => p.nutritionistId === nutritionistId);
     return list.map((p) => {
       const u = this.db.users.find((user) => user.id === p.userId);
-      return { ...p, user: u || p.user };
+      return {
+        ...p,
+        user: u || p.user,
+        invitationStatus: p.invitationStatus || (u?.mustChangePassword ? 'PENDENTE' : 'ATIVO'),
+        temporaryPassword: p.temporaryPassword || u?.temporaryPassword,
+      };
     });
   }
 
-  async createPatient(nutritionistId: string, data: any): Promise<PatientProfile> {
+  async createPatient(
+    nutritionistId: string,
+    data: any
+  ): Promise<{ patient: PatientProfile; temporaryPassword: string }> {
     const { name, email, birthDate, gender, height, phone, notes } = data;
     const cleanEmail = email.trim().toLowerCase();
 
-    let user = this.db.users.find((u) => u.email.toLowerCase() === cleanEmail);
-    const now = new Date().toISOString();
-
-    if (!user) {
-      user = {
-        id: `u-pat-${Date.now()}`,
-        name: name.trim(),
-        email: cleanEmail,
-        role: 'PACIENTE',
-        avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name.trim())}`,
-        createdAt: now,
-        updatedAt: now,
-        passwordHash: 'password123',
-      };
-      this.db.users.push(user);
+    const existing = this.db.users.find((u) => u.email.toLowerCase() === cleanEmail);
+    if (existing) {
+      throw new Error('Já existe um paciente cadastrado com este e-mail no sistema.');
     }
+
+    const now = new Date().toISOString();
+    const tempPassword = `NF-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+
+    const user: User & { passwordHash: string; mustChangePassword?: boolean; temporaryPassword?: string } = {
+      id: `u-pat-${Date.now()}`,
+      name: name.trim(),
+      email: cleanEmail,
+      role: 'PACIENTE',
+      avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name.trim())}`,
+      createdAt: now,
+      updatedAt: now,
+      passwordHash: tempPassword,
+      mustChangePassword: true,
+      temporaryPassword: tempPassword,
+    };
+    this.db.users.push(user);
 
     const newPatient: PatientProfile = {
       id: `pat-${Date.now()}`,
       userId: user.id,
-      nutritionistId,
+      nutritionistId, // Strictly assigned to the current nutritionist
       birthDate: birthDate || '1995-01-01',
       gender: gender || 'F',
       height: Number(height) || 170,
       phone: phone || '',
       notes: notes || '',
+      invitationStatus: 'PENDENTE',
+      invitationSentAt: now,
+      temporaryPassword: tempPassword,
       user,
     };
 
     this.db.patients.push(newPatient);
     this.persist();
-    return newPatient;
+    return { patient: newPatient, temporaryPassword: tempPassword };
+  }
+
+  async changeFirstPassword(userId: string, newPass: string): Promise<{ message: string }> {
+    const user = this.db.users.find((u) => u.id === userId);
+    if (!user) throw new Error('Usuário não encontrado');
+    user.passwordHash = newPass;
+    user.mustChangePassword = false;
+    user.temporaryPassword = undefined;
+    user.updatedAt = new Date().toISOString();
+
+    const pat = this.db.patients.find((p) => p.userId === userId);
+    if (pat) {
+      pat.invitationStatus = 'ATIVO';
+      pat.temporaryPassword = undefined;
+    }
+    this.persist();
+    return { message: 'Senha inicial definida com sucesso!' };
   }
 
   async getPatient(id: string): Promise<PatientProfile> {
@@ -828,7 +880,47 @@ class ClientStorageService {
       totalPatients: patients.length,
       activeDiets,
       totalAssessments,
-      retentionRate: 94,
+      retentionRate: patients.length > 0 ? 94 : 0,
+    };
+  }
+
+  async getPatientDashboardStats(patientId: string) {
+    const pat = this.db.patients.find((p) => p.id === patientId);
+    if (!pat) throw new Error('Paciente não encontrado');
+
+    const assessments = this.db.assessments.filter((a) => a.patientId === patientId);
+    const diets = this.db.diets.filter((d) => d.patientId === patientId);
+    const unreadMessages = this.db.messages.filter(
+      (m) => m.patientId === patientId && !m.readAt && m.senderRole === 'NUTRICIONISTA'
+    ).length;
+
+    const latestAssessment = assessments.length > 0 ? assessments[assessments.length - 1] : null;
+    const activeDiet = diets.find((d) => d.status === 'ATIVA') || diets[0] || null;
+
+    return {
+      patient: pat,
+      currentWeight: pat.currentWeight || latestAssessment?.weight,
+      currentBodyFat: pat.currentBodyFat || latestAssessment?.bodyFatPercentage,
+      currentBmi: pat.currentBmi || latestAssessment?.bmi,
+      lastAssessmentDate: pat.lastAssessmentDate || latestAssessment?.assessmentDate,
+      assessmentsCount: assessments.length,
+      unreadMessages,
+      activeDiet,
+      latestAssessment,
+    };
+  }
+
+  async getPatientInvitation(patientId: string): Promise<PatientInvitation> {
+    const pat = this.db.patients.find((p) => p.id === patientId);
+    if (!pat) throw new Error('Paciente não encontrado');
+    const u = this.db.users.find((user) => user.id === pat.userId);
+    return {
+      patientId: pat.id,
+      patientName: u?.name || pat.user?.name || 'Paciente',
+      email: u?.email || pat.user?.email || '',
+      temporaryPassword: pat.temporaryPassword || u?.temporaryPassword || 'NF-PROV123',
+      status: pat.invitationStatus || (u?.mustChangePassword ? 'PENDENTE' : 'ATIVO'),
+      sentAt: pat.invitationSentAt || pat.user?.createdAt || new Date().toISOString(),
     };
   }
 

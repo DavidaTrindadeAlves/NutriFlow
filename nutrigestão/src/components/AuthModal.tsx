@@ -126,7 +126,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMo
             <h3 className="text-xl font-bold text-white tracking-tight">
               {mode === 'login' ? 'Acessar Conta' : mode === 'register' ? 'Criar Nova Conta' : 'Recuperar Senha'}
             </h3>
-            <p className="text-xs text-neutral-400">NutriGestão — Sistema Clínico</p>
+            <p className="text-xs text-neutral-400">NutriFlow — Sistema Clínico</p>
           </div>
         </div>
 
@@ -422,7 +422,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMo
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={() => handleQuickFill('dr.carlos@nutrigestao.com')}
+                  onClick={() => handleQuickFill('dr.carlos@nutriflow.com')}
                   className="p-2 rounded-lg bg-neutral-950 border border-neutral-800 text-[11px] text-neutral-300 hover:border-purple-600 hover:text-white transition text-center"
                 >
                   Dr. Carlos (Nutri)

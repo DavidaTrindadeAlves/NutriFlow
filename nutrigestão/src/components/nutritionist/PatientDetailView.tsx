@@ -6,6 +6,7 @@ import {
   AssessmentProtocol,
   Diet,
   Message,
+  PatientInvitation,
   PatientProfile,
 } from '../../types.ts';
 import {
@@ -19,6 +20,7 @@ import {
   ChevronDown,
   Clock,
   Flame,
+  KeyRound,
   LineChart as LineChartIcon,
   MessageSquare,
   Minus,
@@ -33,6 +35,7 @@ import {
   Utensils,
   X,
 } from 'lucide-react';
+import { PatientInvitationModal } from './PatientInvitationModal.tsx';
 import {
   Area,
   AreaChart,
@@ -70,6 +73,29 @@ export const PatientDetailView: React.FC<PatientDetailViewProps> = ({
   // Chat input
   const [chatMessage, setChatMessage] = useState('');
   const [sendingMsg, setSendingMsg] = useState(false);
+
+  // Patient invitation modal
+  const [invitationModalOpen, setInvitationModalOpen] = useState(false);
+  const [currentInvitation, setCurrentInvitation] = useState<PatientInvitation | null>(null);
+
+  const handleOpenInvitation = async () => {
+    if (!patient) return;
+    try {
+      const inv = await api.getPatientInvitation(patient.id);
+      setCurrentInvitation(inv);
+      setInvitationModalOpen(true);
+    } catch {
+      setCurrentInvitation({
+        patientId: patient.id,
+        patientName: patient.user?.name || 'Paciente',
+        email: patient.user?.email || '',
+        temporaryPassword: patient.temporaryPassword || 'NF-PROV123',
+        status: patient.invitationStatus || 'PENDENTE',
+        sentAt: patient.invitationSentAt || new Date().toISOString(),
+      });
+      setInvitationModalOpen(true);
+    }
+  };
 
   // New Assessment Drawer / Modal state
   const [showAssessmentModal, setShowAssessmentModal] = useState(false);
@@ -305,6 +331,14 @@ export const PatientDetailView: React.FC<PatientDetailViewProps> = ({
 
         {/* Action buttons */}
         <div className="flex items-center space-x-2">
+          <button
+            onClick={handleOpenInvitation}
+            className="px-3.5 py-2 rounded-xl bg-neutral-900 border border-amber-800/50 hover:bg-neutral-800 text-amber-300 text-xs font-bold transition flex items-center space-x-1.5"
+            title="Ver senha provisória e convite de acesso do paciente"
+          >
+            <KeyRound className="w-4 h-4 text-amber-400" />
+            <span>Acesso & Convite</span>
+          </button>
           <button
             onClick={() => setShowAssessmentModal(true)}
             className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:brightness-110 active:scale-95 text-white text-xs font-bold shadow-lg shadow-purple-900/30 transition flex items-center space-x-1.5"
@@ -1408,6 +1442,13 @@ export const PatientDetailView: React.FC<PatientDetailViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Patient Invitation / Temporary Password Modal */}
+      <PatientInvitationModal
+        isOpen={invitationModalOpen}
+        onClose={() => setInvitationModalOpen(false)}
+        invitation={currentInvitation}
+      />
     </div>
   );
 };

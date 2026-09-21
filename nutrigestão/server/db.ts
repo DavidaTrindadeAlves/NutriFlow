@@ -14,7 +14,7 @@ import {
 } from '../src/types.ts';
 
 export interface DatabaseSchema {
-  users: (User & { passwordHash: string })[];
+  users: (User & { passwordHash: string; mustChangePassword?: boolean; temporaryPassword?: string })[];
   nutritionists: NutritionistProfile[];
   patients: PatientProfile[];
   licenses: License[];
@@ -28,8 +28,8 @@ import os from 'os';
 function getStoragePaths(): { dataDir: string; dbFile: string } {
   // If running on Vercel or read-only filesystem, use /tmp
   if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
-    const tmpDir = path.join(os.tmpdir(), 'nutrigestao_data');
-    return { dataDir: tmpDir, dbFile: path.join(tmpDir, 'nutrigestao_db.json') };
+    const tmpDir = path.join(os.tmpdir(), 'nutriflow_data');
+    return { dataDir: tmpDir, dbFile: path.join(tmpDir, 'nutriflow_db.json') };
   }
 
   const defaultDir = path.join(process.cwd(), 'data');
@@ -41,11 +41,11 @@ function getStoragePaths(): { dataDir: string; dbFile: string } {
     const testFile = path.join(defaultDir, '.write-test');
     fs.writeFileSync(testFile, 'ok');
     fs.unlinkSync(testFile);
-    return { dataDir: defaultDir, dbFile: path.join(defaultDir, 'nutrigestao_db.json') };
+    return { dataDir: defaultDir, dbFile: path.join(defaultDir, 'nutriflow_db.json') };
   } catch {
     // Fall back to os.tmpdir() if current working dir is read-only
-    const tmpDir = path.join(os.tmpdir(), 'nutrigestao_data');
-    return { dataDir: tmpDir, dbFile: path.join(tmpDir, 'nutrigestao_db.json') };
+    const tmpDir = path.join(os.tmpdir(), 'nutriflow_data');
+    return { dataDir: tmpDir, dbFile: path.join(tmpDir, 'nutriflow_db.json') };
   }
 }
 
@@ -86,15 +86,16 @@ function seedDefaultData(): DatabaseSchema {
     return d.toISOString();
   };
 
-  const userNutri: User & { passwordHash: string } = {
+  const userNutri: User & { passwordHash: string; mustChangePassword?: boolean; temporaryPassword?: string } = {
     id: 'u-nutri-carlos',
     name: 'Dr. Carlos Nutrição',
-    email: 'dr.carlos@nutrigestao.com',
+    email: 'dr.carlos@nutriflow.com',
     role: 'NUTRICIONISTA',
     avatar: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=200&auto=format&fit=crop&q=80',
     createdAt: dateAgo(180),
     updatedAt: now,
     passwordHash: defaultHash,
+    mustChangePassword: false,
   };
 
   const userMariana: User & { passwordHash: string } = {

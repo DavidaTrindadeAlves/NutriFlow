@@ -9,6 +9,7 @@ import { PatientDetailView } from './components/nutritionist/PatientDetailView.t
 import { ChatView } from './components/nutritionist/ChatView.tsx';
 import { PatientPortal } from './components/patient/PatientPortal.tsx';
 import { SettingsModal } from './components/SettingsModal.tsx';
+import { FirstPasswordChangeModal } from './components/auth/FirstPasswordChangeModal.tsx';
 import {
   Activity,
   BarChart3,
@@ -39,7 +40,7 @@ function AppContent() {
         <div className="w-12 h-12 rounded-2xl bg-purple-600 flex items-center justify-center animate-bounce shadow-xl shadow-purple-900/40">
           <Activity className="w-6 h-6 text-white" />
         </div>
-        <p className="text-xs text-neutral-400 font-medium">Carregando NutriGestão...</p>
+        <p className="text-xs text-neutral-400 font-medium">Carregando NutriFlow...</p>
       </div>
     );
   }
@@ -61,6 +62,18 @@ function AppContent() {
           initialMode={authModalMode}
         />
       </>
+    );
+  }
+
+  // Mandatory First Access Password Reset for Patients with temporary passwords
+  if (user.mustChangePassword) {
+    return (
+      <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col selection:bg-purple-600 selection:text-white">
+        <Navbar onOpenSettings={() => setSettingsModalOpen(true)} />
+        <div className="flex-1 flex items-center justify-center p-4">
+          <FirstPasswordChangeModal />
+        </div>
+      </div>
     );
   }
 
